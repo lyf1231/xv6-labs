@@ -1,12 +1,11 @@
 #include "types.h"
 #include "riscv.h"
+#include "param.h"
 #include "defs.h"
 #include "date.h"
-#include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "kernel/sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -47,6 +46,7 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
+  
   addr = myproc()->sz;
   if(growproc(n) < 0)
     return -1;
@@ -58,6 +58,7 @@ sys_sleep(void)
 {
   int n;
   uint ticks0;
+
 
   if(argint(0, &n) < 0)
     return -1;
@@ -73,6 +74,40 @@ sys_sleep(void)
   release(&tickslock);
   return 0;
 }
+
+
+#ifdef LAB_PGTBL
+int
+sys_pgaccess(void)
+{
+  // lab pgtbl: your code here.
+  uint64 start_va, buffer_va;
+  int npages;
+  int bits = 0;
+  
+  argaddr(0, &start_va);
+  argint(1, &npages);
+  argaddr(2, &buffer_va);
+
+  if(npages>32)
+  npages = 32;
+
+  struct proc* p = myproc();
+  pagetable_t pgtbl = p->pagetable;
+  for(int i=0; i < npages; i++){
+    extern pte_t *walk(pagetable_t pagetable, uint64 va, int alloc);
+    pte_t* PTE = walk(pgtbl, start_va, 0);
+    if(*PTE & PTE_A)
+    {
+      bits |= 1L << i;
+    }
+    *PTE &= ~PTE_A;
+    start_va += PGSIZE;
+  }
+  copyout(pgtbl, buffer_va, (char*)&bits, 4);
+  return 0;
+}
+#endif
 
 uint64
 sys_kill(void)
@@ -95,40 +130,4 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
-}
-
-uint64
-sys_trace(void)
-{
-  int mask;
-  struct proc* p = myproc();
-  argint(0, &mask);
-  acquire(&p->lock);
-  p->trace_mask = mask;
-  release(&p->lock);
-  return 0;
-}
-
-struct sysinfo;
-uint64
-sys_sysinfo(void)
-{
-  uint64 p = 0;
-  // printf("%p", &p);
-  if (argaddr(0, &p) < 0) {  // 将用户传入的地址写入 user_addr
-    return -1;  // 获取参数失败
-  }
-  struct proc *process = myproc();
-  if(walkaddr(process->pagetable, (uint64)p) == 0){
-    return -1;
-  }
-
-  struct sysinfo info;
-  extern uint64 count_free_mem(void);
-  extern uint64 count_unused_proc(void);
-  (&info)->freemem = (uint64)count_free_mem();
-  (&info)->nproc = count_unused_proc();
-  
-  copyout(process->pagetable, p, (char*)&info, sizeof(struct sysinfo));
-  return 0;
 }

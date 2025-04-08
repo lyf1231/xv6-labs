@@ -195,7 +195,23 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
+  void* physical_page = kalloc();
+  if(physical_page==0){
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+  
+  if(mappages(pagetable, USYSCALL, PGSIZE, (uint64)physical_page, PTE_R|PTE_U) < 0){
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmfree(pagetable, 0);
+    kfree(physical_page);
+    return 0;
+  }
 
+  ((struct usyscall*)physical_page)-> pid = p->pid;
   return pagetable;
 }
 
@@ -206,6 +222,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, USYSCALL, 1, 1);
   uvmfree(pagetable, sz);
 }
 
@@ -304,8 +321,6 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
-
-  np->trace_mask = p->trace_mask;
 
   release(&np->lock);
 
@@ -655,16 +670,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-
-uint64 count_unused_proc(void);
-uint64 count_unused_proc(void){
-  uint64 num_unused_proc = 0;
-  for(struct proc* p=proc; p<proc+NPROC; p++){
-    // acquire(&p->lock);
-    if(p->state!=UNUSED)
-      num_unused_proc += 1;
-    // release(&p->lock);
-  }
-  return num_unused_proc;
 }
