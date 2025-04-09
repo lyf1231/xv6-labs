@@ -141,6 +141,14 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  for(int i=0; i<32; i++){
+    p->alarm_states[i] = 0;
+  }
+  p->handler_called = 0;
+  p->ticks = 0;
+  p->pticks = 0;
+  p->handler = 0;
+
   return p;
 }
 
@@ -304,8 +312,6 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
-
-  np->trace_mask = p->trace_mask;
 
   release(&np->lock);
 
@@ -655,16 +661,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-
-uint64 count_unused_proc(void);
-uint64 count_unused_proc(void){
-  uint64 num_unused_proc = 0;
-  for(struct proc* p=proc; p<proc+NPROC; p++){
-    // acquire(&p->lock);
-    if(p->state!=UNUSED)
-      num_unused_proc += 1;
-    // release(&p->lock);
-  }
-  return num_unused_proc;
 }

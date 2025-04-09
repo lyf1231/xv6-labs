@@ -77,8 +77,11 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    alarmfunc();
     yield();
+  }
+    
 
   usertrapret();
 }
@@ -218,3 +221,17 @@ devintr()
   }
 }
 
+void alarmfunc(void){
+  struct proc* p = myproc();
+
+  p->pticks+=1;
+  if(p->pticks>=p->ticks&&p->handler_called!=1&&p->ticks>0){
+    for(int i=0; i<31; i++){
+      p->alarm_states[i] = *(((uint64*)(p->trapframe))+5+i);
+    }
+    p->alarm_states[31] = p->trapframe->epc;
+    p->pticks = 0;
+    p->trapframe->epc = (uint64)(p->handler);
+    p->handler_called = 1;
+  }
+}

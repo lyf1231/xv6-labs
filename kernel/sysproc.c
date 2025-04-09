@@ -6,7 +6,6 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "kernel/sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -56,6 +55,8 @@ sys_sbrk(void)
 uint64
 sys_sleep(void)
 {
+  backtrace();
+
   int n;
   uint ticks0;
 
@@ -97,38 +98,21 @@ sys_uptime(void)
   return xticks;
 }
 
-uint64
-sys_trace(void)
-{
-  int mask;
-  struct proc* p = myproc();
-  argint(0, &mask);
-  acquire(&p->lock);
-  p->trace_mask = mask;
-  release(&p->lock);
+uint64 sys_sigalarm(void){
+  struct proc *p = myproc();
+  p->ticks = p -> trapframe -> a0;
+  p -> pticks = 0;
+  p->handler = (void*)(p->trapframe->a1);
   return 0;
 }
 
-struct sysinfo;
-uint64
-sys_sysinfo(void)
-{
-  uint64 p = 0;
-  // printf("%p", &p);
-  if (argaddr(0, &p) < 0) {  // 将用户传入的地址写入 user_addr
-    return -1;  // 获取参数失败
+uint64 sys_sigreturn(void){
+  // printf("sigreturn!\n");
+  struct proc* p = myproc();
+  p->handler_called=0;
+  for(int i=0; i<31; i++){
+    *(((uint64*)(p->trapframe))+5+i) = p->alarm_states[i];
   }
-  struct proc *process = myproc();
-  if(walkaddr(process->pagetable, (uint64)p) == 0){
-    return -1;
-  }
-
-  struct sysinfo info;
-  extern uint64 count_free_mem(void);
-  extern uint64 count_unused_proc(void);
-  (&info)->freemem = (uint64)count_free_mem();
-  (&info)->nproc = count_unused_proc();
-  
-  copyout(process->pagetable, p, (char*)&info, sizeof(struct sysinfo));
+  p->trapframe->epc = p->alarm_states[31];
   return 0;
 }
